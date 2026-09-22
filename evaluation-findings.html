@@ -1,0 +1,1073 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Product Identity Resolution — Evaluation Findings | Databricks × TJX</title>
+
+<!-- Fonts: Fraunces (display serif), Chivo (body), Chivo Mono (chrome/labels) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,700;1,9..144,500&family=Chivo+Mono:wght@300;400;500&family=Chivo:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   THEME TOKENS — "Slate & Signal"
+   Deep slate-teal ground, warm chalk type, one hot coral accent.
+   Change these to restyle the entire deck.
+   ============================================================ */
+:root{
+  /* Surfaces */
+  --slate:#132A2E;
+  --slate-2:#0D1F22;
+  --slate-3:#1B3A3F;
+  --panel:rgba(242,237,228,.035);
+  --panel-2:rgba(242,237,228,.055);
+
+  /* Type */
+  --chalk:#F2EDE4;
+  --chalk-dim:#A8B5B3;
+  --chalk-faint:#5D7377;
+
+  /* Accents — coral is the ONLY hot accent; sage is secondary/positive */
+  --coral:#FF6B4A;
+  --sage:#7FB09B;
+  --amber:#E0A85C;
+
+  /* Rules */
+  --hair:rgba(242,237,228,.14);
+  --hair-soft:rgba(242,237,228,.08);
+
+  /* Fonts */
+  --f-display:'Fraunces',Georgia,serif;
+  --f-body:'Chivo',system-ui,sans-serif;
+  --f-mono:'Chivo Mono',ui-monospace,monospace;
+
+  /* Motion */
+  --ease:cubic-bezier(.2,.7,.3,1);
+
+  /* Stage */
+  --stage-bg:#081315;
+  --slide-bg:var(--slate);
+}
+
+*{margin:0;padding:0;box-sizing:border-box;}
+
+/* ============================================================
+   FIXED 16:9 STAGE — MANDATORY BASE (viewport-base.css)
+   Slides authored at 1920×1080 and scaled as a whole.
+   ============================================================ */
+html,body{width:100%;height:100%;margin:0;overflow:hidden;background:var(--stage-bg,#000);}
+.deck-viewport{position:fixed;inset:0;overflow:hidden;background:var(--stage-bg,#000);}
+.deck-stage{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden;transform-origin:0 0;background:var(--slide-bg,#fff);}
+.slide{position:absolute;inset:0;width:1920px;height:1080px;overflow:hidden;display:block;visibility:hidden;opacity:0;pointer-events:none;background:var(--slide-bg,#fff);}
+.slide.active,.slide.visible{visibility:visible;opacity:1;pointer-events:auto;z-index:1;}
+img,video,canvas,svg{max-width:100%;max-height:100%;}
+.deck-controls{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:1000;}
+@media print{
+  html,body{width:1920px;height:auto;overflow:visible;background:#fff;}
+  .deck-viewport{position:static;overflow:visible;background:#fff;}
+  .deck-stage{position:static;width:auto;height:auto;transform:none !important;background:none;}
+  .slide{position:relative;display:block !important;visibility:visible !important;opacity:1 !important;pointer-events:auto !important;width:1920px;height:1080px;break-after:page;page-break-after:always;}
+  .slide:last-child{break-after:auto;page-break-after:auto;}
+  .deck-controls{display:none !important;}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;transition-duration:.2s !important;}
+}
+
+/* ============================================================
+   SLIDE SURFACE — atmospheric depth, not flat colour
+   ============================================================ */
+.slide{
+  background:
+    radial-gradient(1100px 760px at 80% 22%, rgba(127,176,155,.11), transparent 62%),
+    radial-gradient(860px 640px at 8% 92%, rgba(255,107,74,.075), transparent 60%),
+    var(--slate);
+}
+/* Alternate surface for section-break slides */
+.slide.deep{
+  background:
+    radial-gradient(900px 700px at 22% 18%, rgba(255,107,74,.10), transparent 60%),
+    radial-gradient(900px 700px at 84% 86%, rgba(127,176,155,.08), transparent 62%),
+    var(--slate-2);
+}
+
+/* ============================================================
+   SHARED LAYOUT — chrome rail, headings, footer
+   ============================================================ */
+.wrap{position:absolute;inset:0;padding:76px 104px 64px;display:flex;flex-direction:column;}
+
+.rail{display:flex;align-items:center;gap:22px;padding-bottom:20px;border-bottom:1px solid var(--hair);}
+.rail .num{font-family:var(--f-mono);font-size:15px;font-weight:500;letter-spacing:.16em;
+  color:var(--slate);background:var(--coral);padding:6px 12px;border-radius:2px;}
+.rail .lbl{font-family:var(--f-mono);font-size:15px;letter-spacing:.18em;text-transform:uppercase;color:var(--chalk-dim);}
+.rail .sp{flex:1;}
+.rail .src{font-family:var(--f-mono);font-size:14px;letter-spacing:.13em;text-transform:uppercase;color:var(--chalk-faint);}
+
+h2{font-family:var(--f-display);font-weight:700;font-size:66px;line-height:1.06;
+  color:var(--chalk);letter-spacing:-.022em;margin:34px 0 0;max-width:1560px;}
+h2 i{font-style:italic;font-weight:500;color:var(--coral);}
+.dek{font-family:var(--f-body);font-weight:300;font-size:25px;line-height:1.5;
+  color:var(--chalk-dim);max-width:1300px;margin:20px 0 0;}
+
+.body{flex:1;display:flex;flex-direction:column;justify-content:center;padding:6px 0;}
+
+.foot{display:flex;justify-content:space-between;align-items:baseline;
+  border-top:1px solid var(--hair);padding-top:16px;}
+.foot span{font-family:var(--f-mono);font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--chalk-faint);}
+
+/* ============================================================
+   TITLE SLIDE
+   ============================================================ */
+.t-wrap{position:absolute;inset:0;padding:92px 104px;display:flex;flex-direction:column;}
+.t-rail{display:flex;gap:26px;align-items:center;}
+.t-rail .chip{font-family:var(--f-mono);font-size:16px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--slate);background:var(--chalk);padding:8px 15px;border-radius:2px;}
+.t-rail .dt{font-family:var(--f-mono);font-size:16px;letter-spacing:.16em;text-transform:uppercase;color:var(--chalk-faint);}
+.t-hero{flex:1;display:flex;flex-direction:column;justify-content:center;max-width:1010px;}
+h1{font-family:var(--f-display);font-weight:700;font-size:104px;line-height:1.0;
+  color:var(--chalk);margin:0 0 34px;letter-spacing:-.024em;}
+h1 i{font-style:italic;font-weight:500;color:var(--coral);}
+.t-lede{font-family:var(--f-body);font-weight:300;font-size:29px;line-height:1.52;color:var(--chalk-dim);max-width:900px;}
+.t-fig{display:flex;align-items:flex-end;gap:30px;margin-top:52px;padding-top:34px;border-top:2px solid var(--hair);}
+.t-fig .big{font-family:var(--f-display);font-weight:700;font-size:132px;line-height:.86;color:var(--coral);letter-spacing:-.03em;}
+.t-fig .note{font-family:var(--f-mono);font-size:17px;line-height:1.75;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--chalk-dim);padding-bottom:12px;}
+.t-fig .note b{color:var(--chalk);font-weight:500;}
+.t-fig .vs{font-family:var(--f-mono);font-size:17px;line-height:1.75;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--chalk-faint);padding-bottom:12px;}
+
+/* Cluster field — abstract CSS/JS data viz, title slide only */
+.field{position:absolute;right:96px;top:150px;width:660px;height:660px;}
+.dot{position:absolute;width:11px;height:11px;border-radius:50%;background:var(--chalk-faint);opacity:0;animation:pop .6s ease forwards;}
+.dot.hit{background:var(--coral);box-shadow:0 0 0 6px rgba(255,107,74,.14);}
+.dot.sib{background:var(--sage);}
+@keyframes pop{to{opacity:1;}}
+.ring{position:absolute;border:1px solid rgba(242,237,228,.16);border-radius:50%;opacity:0;
+  animation:grow 1.1s var(--ease) forwards;}
+@keyframes grow{from{opacity:0;transform:scale(.82);}to{opacity:1;transform:scale(1);}}
+
+/* ============================================================
+   COMPONENTS
+   ============================================================ */
+
+/* -- embedded-columns table (tiered) -- */
+table.cols{width:100%;border-collapse:collapse;margin-top:4px;}
+table.cols th{font-family:var(--f-mono);font-size:14px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--chalk-faint);font-weight:400;text-align:left;padding:0 20px 14px 0;border-bottom:1px solid var(--hair);}
+table.cols th.r{text-align:right;padding-right:0;}
+table.cols td{font-family:var(--f-body);font-weight:300;font-size:20px;color:var(--chalk-dim);
+  padding:15px 20px 15px 0;border-bottom:1px solid var(--hair-soft);vertical-align:top;}
+table.cols td.col{font-family:var(--f-mono);font-size:18px;color:var(--chalk);white-space:nowrap;}
+table.cols td.r{text-align:right;padding-right:0;font-family:var(--f-mono);font-size:17px;color:var(--chalk-faint);}
+table.cols tr.tier td{border-bottom:none;padding:26px 0 8px;}
+table.cols tr.tier:first-child td{padding-top:6px;}
+table.cols .tierlab{font-family:var(--f-mono);font-size:13px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--coral);}
+table.cols .tierlab.sup{color:var(--sage);}
+table.cols .tierlab.sec{color:var(--chalk-faint);}
+
+/* -- embed_text specimen -- */
+.specimen{margin-top:30px;background:var(--slate-2);border:1px solid var(--hair);padding:22px 26px;}
+.specimen .cap{font-family:var(--f-mono);font-size:13px;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--chalk-faint);margin-bottom:14px;}
+.specimen code{font-family:var(--f-mono);font-size:16px;line-height:1.85;color:var(--chalk-dim);
+  display:block;word-break:break-word;}
+.specimen code b{color:var(--sage);font-weight:400;}
+.specimen code i{color:var(--chalk);font-style:normal;}
+
+/* -- numbered step row (method slide) -- */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:14px;}
+.step{padding:0 44px 0 0;position:relative;}
+.step + .step{padding-left:44px;border-left:1px solid var(--hair);}
+.step .n{font-family:var(--f-mono);font-size:15px;letter-spacing:.16em;color:var(--coral);margin-bottom:18px;}
+.step h3{font-family:var(--f-display);font-weight:500;font-size:32px;line-height:1.2;color:var(--chalk);margin-bottom:14px;letter-spacing:-.01em;}
+.step p{font-family:var(--f-body);font-weight:300;font-size:20px;line-height:1.55;color:var(--chalk-dim);}
+.step p code{font-family:var(--f-mono);font-size:18px;color:var(--sage);}
+
+/* -- definition callout -- */
+.callout{margin-top:40px;padding:30px 36px;background:var(--panel);border-left:3px solid var(--coral);}
+.callout .k{font-family:var(--f-mono);font-size:14px;letter-spacing:.17em;text-transform:uppercase;color:var(--coral);margin-bottom:14px;}
+.callout p{font-family:var(--f-body);font-weight:300;font-size:22px;line-height:1.55;color:var(--chalk);}
+.callout p b{font-weight:500;color:var(--chalk);}
+.callout p em{font-style:italic;color:var(--chalk-dim);}
+.callout code{font-family:var(--f-mono);font-size:20px;color:var(--sage);}
+
+/* -- results table -- */
+table.res{width:100%;border-collapse:collapse;margin-top:10px;}
+table.res th{font-family:var(--f-mono);font-size:15px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--chalk-faint);font-weight:400;text-align:right;padding:0 0 16px 28px;border-bottom:1px solid var(--hair);}
+table.res th.l{text-align:left;padding-left:0;}
+table.res td{font-family:var(--f-body);font-weight:300;font-size:26px;color:var(--chalk-dim);
+  text-align:right;padding:22px 0 22px 28px;border-bottom:1px solid var(--hair-soft);}
+table.res td.l{text-align:left;padding-left:0;font-size:23px;color:var(--chalk);}
+table.res td.l small{display:block;font-family:var(--f-mono);font-size:14px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--chalk-faint);margin-top:6px;}
+table.res td.hero{font-family:var(--f-display);font-weight:700;font-size:44px;color:var(--coral);letter-spacing:-.02em;}
+table.res td.good{color:var(--sage);font-weight:400;}
+table.res tr.spacer td{border:none;height:8px;padding:0;}
+
+/* -- two-column split -- */
+.split{display:grid;grid-template-columns:1fr 1fr;gap:56px;margin-top:8px;}
+.split.wide-l{grid-template-columns:1.15fr .85fr;}
+
+/* column caption + trailing note, so paired columns read as a matched set */
+.colcap{font-family:var(--f-mono);font-size:14px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--chalk-faint);padding-bottom:16px;margin-bottom:6px;border-bottom:1px solid var(--hair);}
+.undernote{font-family:var(--f-body);font-weight:300;font-size:19px;line-height:1.55;
+  color:var(--chalk-dim);margin-top:22px;}
+.undernote b{font-weight:500;color:var(--chalk);}
+.undernote em{font-style:italic;}
+
+/* -- result-list mock (crowding demo) -- */
+.mock{background:var(--slate-2);border:1px solid var(--hair);padding:24px 26px;}
+.mock .cap{font-family:var(--f-mono);font-size:14px;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--chalk-faint);margin-bottom:18px;display:flex;justify-content:space-between;}
+.mock .cap b{color:var(--chalk);font-weight:500;}
+.mrow{display:flex;align-items:center;gap:14px;padding:9px 0;font-family:var(--f-mono);font-size:17px;color:var(--chalk-dim);}
+.mrow + .mrow{border-top:1px solid var(--hair-soft);}
+.mrow .i{width:24px;color:var(--chalk-faint);font-size:14px;}
+.mrow .tx{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mrow.dup{color:var(--chalk-faint);}
+.mrow.dup .tx{opacity:.75;}
+.mrow.uniq .tx{color:var(--chalk);}
+.tagd{font-family:var(--f-mono);font-size:12px;letter-spacing:.11em;text-transform:uppercase;
+  padding:3px 8px;border-radius:2px;background:rgba(255,107,74,.16);color:var(--coral);}
+.tagu{font-family:var(--f-mono);font-size:12px;letter-spacing:.11em;text-transform:uppercase;
+  padding:3px 8px;border-radius:2px;background:rgba(127,176,155,.16);color:var(--sage);}
+
+/* -- distribution bars -- */
+.dist{margin-top:6px;}
+.drow{display:grid;grid-template-columns:190px 1fr 120px;align-items:center;gap:22px;padding:13px 0;}
+.drow + .drow{border-top:1px solid var(--hair-soft);}
+.drow .lab{font-family:var(--f-mono);font-size:16px;letter-spacing:.1em;text-transform:uppercase;color:var(--chalk-dim);}
+.drow .bar{height:26px;background:var(--panel);position:relative;overflow:hidden;}
+.drow .bar i{position:absolute;left:0;top:0;bottom:0;background:var(--chalk-faint);
+  width:0;animation:fill 1.05s var(--ease) forwards;}
+.drow.hot .bar i{background:var(--coral);}
+.drow .val{font-family:var(--f-display);font-weight:500;font-size:27px;color:var(--chalk);text-align:right;}
+.drow.hot .val{color:var(--coral);font-weight:700;}
+@keyframes fill{to{width:var(--w);}}
+
+/* -- evidence cards -- */
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:26px;margin-top:10px;}
+.card{background:var(--panel);border-top:2px solid var(--sage);padding:26px 28px;}
+.card.warn{border-top-color:var(--amber);}
+.card .ct{font-family:var(--f-mono);font-size:13px;letter-spacing:.15em;text-transform:uppercase;color:var(--sage);margin-bottom:16px;}
+.card.warn .ct{color:var(--amber);}
+.card h4{font-family:var(--f-display);font-weight:500;font-size:26px;line-height:1.25;color:var(--chalk);margin-bottom:16px;letter-spacing:-.01em;}
+.card ul{list-style:none;}
+.card li{font-family:var(--f-mono);font-size:16px;line-height:1.75;color:var(--chalk-dim);padding-left:16px;position:relative;}
+.card li::before{content:'';position:absolute;left:0;top:11px;width:5px;height:5px;background:var(--chalk-faint);border-radius:50%;}
+.card p{font-family:var(--f-body);font-weight:300;font-size:19px;line-height:1.55;color:var(--chalk-dim);margin-top:14px;}
+
+/* -- findings grid (2×2) -- */
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:22px 48px;margin-top:6px;}
+.fitem{display:grid;grid-template-columns:150px 1fr;gap:24px;align-items:baseline;
+  padding:20px 0;border-top:1px solid var(--hair);}
+.fitem .fig{font-family:var(--f-display);font-weight:700;font-size:42px;color:var(--coral);
+  line-height:1;letter-spacing:-.02em;}
+.fitem .fig small{display:block;font-family:var(--f-mono);font-size:13px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--chalk-faint);margin-top:8px;font-weight:400;}
+.fitem h4{font-family:var(--f-body);font-weight:500;font-size:22px;color:var(--chalk);margin-bottom:8px;}
+.fitem p{font-family:var(--f-body);font-weight:300;font-size:19px;line-height:1.5;color:var(--chalk-dim);}
+
+/* -- questions list -- */
+.qgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 56px;margin-top:4px;}
+.q{display:grid;grid-template-columns:44px 1fr;gap:18px;padding:19px 0;border-top:1px solid var(--hair);}
+.q .qn{font-family:var(--f-mono);font-size:16px;color:var(--coral);letter-spacing:.08em;padding-top:3px;}
+.q p{font-family:var(--f-body);font-weight:300;font-size:20px;line-height:1.5;color:var(--chalk-dim);}
+.q p b{font-weight:500;color:var(--chalk);}
+.q p code{font-family:var(--f-mono);font-size:18px;color:var(--sage);}
+
+/* -- closing statement -- */
+.close-hero{flex:1;display:flex;flex-direction:column;justify-content:center;max-width:1420px;}
+.close-hero .st{font-family:var(--f-display);font-weight:700;font-size:76px;line-height:1.1;
+  color:var(--chalk);letter-spacing:-.024em;margin-bottom:34px;}
+.close-hero .st i{font-style:italic;font-weight:500;color:var(--coral);}
+.close-hero p{font-family:var(--f-body);font-weight:300;font-size:26px;line-height:1.55;color:var(--chalk-dim);max-width:1180px;}
+.nextgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:0;margin-top:54px;padding-top:34px;border-top:2px solid var(--hair);}
+.nextgrid .nx{padding-right:40px;}
+.nextgrid .nx + .nx{padding-left:40px;border-left:1px solid var(--hair);}
+.nextgrid .nn{font-family:var(--f-mono);font-size:14px;letter-spacing:.16em;text-transform:uppercase;color:var(--coral);margin-bottom:14px;}
+.nextgrid h4{font-family:var(--f-body);font-weight:500;font-size:23px;color:var(--chalk);margin-bottom:10px;}
+.nextgrid p{font-family:var(--f-body);font-weight:300;font-size:19px;line-height:1.5;color:var(--chalk-dim);}
+
+/* ============================================================
+   REVEAL ANIMATIONS — re-trigger each time a slide becomes active
+   ============================================================ */
+.reveal{opacity:0;transform:translateY(24px);
+  transition:opacity .8s var(--ease),transform .8s var(--ease);}
+.slide.visible .reveal{opacity:1;transform:none;}
+.slide.visible .reveal:nth-child(1){transition-delay:.08s}
+.slide.visible .reveal:nth-child(2){transition-delay:.18s}
+.slide.visible .reveal:nth-child(3){transition-delay:.28s}
+.slide.visible .reveal:nth-child(4){transition-delay:.38s}
+.slide.visible .reveal:nth-child(5){transition-delay:.48s}
+.slide.visible .reveal:nth-child(6){transition-delay:.58s}
+.rd1{transition-delay:.12s !important}
+.rd2{transition-delay:.24s !important}
+.rd3{transition-delay:.36s !important}
+.rd4{transition-delay:.48s !important}
+.rd5{transition-delay:.60s !important}
+.rd6{transition-delay:.72s !important}
+
+/* Bars only animate once their slide is visible */
+.drow .bar i{animation-play-state:paused;}
+.slide.visible .drow .bar i{animation-play-state:running;}
+
+/* ============================================================
+   DECK CHROME — progress + edit affordance (outside the stage)
+   ============================================================ */
+.deck-controls{display:flex;align-items:center;gap:16px;
+  font-family:var(--f-mono);font-size:13px;letter-spacing:.14em;color:rgba(242,237,228,.4);}
+.deck-controls .pips{display:flex;gap:7px;}
+.deck-controls .pip{width:7px;height:7px;border-radius:50%;background:rgba(242,237,228,.22);
+  cursor:pointer;transition:background .3s,transform .3s;}
+.deck-controls .pip.on{background:var(--coral);transform:scale(1.35);}
+
+.edit-hotzone{position:fixed;top:0;left:0;width:80px;height:80px;z-index:10000;cursor:pointer;}
+.edit-toggle{position:fixed;top:18px;left:18px;z-index:10001;opacity:0;pointer-events:none;
+  transition:opacity .3s ease;background:var(--coral);color:var(--slate);border:none;
+  width:42px;height:42px;border-radius:3px;font-size:19px;cursor:pointer;}
+.edit-toggle.show,.edit-toggle.active{opacity:1;pointer-events:auto;}
+.edit-toggle.active{background:var(--sage);}
+body.editing [contenteditable]{outline:1px dashed rgba(255,107,74,.55);outline-offset:3px;}
+body.editing [contenteditable]:focus{outline:2px solid var(--coral);background:rgba(255,107,74,.06);}
+.edit-note{position:fixed;bottom:22px;left:18px;z-index:10001;display:none;
+  font-family:var(--f-mono);font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--chalk-dim);background:var(--slate-2);border:1px solid var(--hair);padding:9px 13px;}
+body.editing .edit-note{display:block;}
+</style>
+</head>
+<body>
+
+<div class="deck-viewport">
+  <main class="deck-stage" id="deckStage">
+
+    <!-- ============================================================
+         SLIDE 1 — TITLE
+         ============================================================ -->
+    <section class="slide title-slide active visible">
+      <div class="field" id="field"></div>
+      <div class="t-wrap">
+        <div class="t-rail reveal">
+          <span class="chip">Databricks × TJX</span>
+          <span class="dt">Evaluation readout · 6 Aug 2026</span>
+        </div>
+        <div class="t-hero">
+          <h1 class="reveal">Product identity resolution: <i>what the data told us</i></h1>
+          <p class="t-lede reveal">Semantic retrieval measured against your product clusters across
+            1,996,496 purchase-order rows — and the limits the ground truth places on any score.</p>
+        </div>
+        <div class="t-fig reveal">
+          <div class="big">0.884</div>
+          <div class="note">Precision at k=3<br><b>Deduplicated corpus</b></div>
+          <div class="vs">— against —<br>0.730 full corpus</div>
+        </div>
+        <div class="foot reveal" style="margin-top:46px;border-top:none;padding-top:0">
+          <span>Akil Thomas · Field Engineering</span>
+          <span>01 / 09</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SLIDE 2 — HOW WE MEASURED
+         ============================================================ -->
+    <section class="slide">
+      <div class="wrap">
+        <div class="rail reveal">
+          <span class="num">02</span>
+          <span class="lbl">Method</span>
+          <span class="sp"></span>
+          <span class="src">n = 150 sampled products · HYBRID retrieval</span>
+        </div>
+        <h2 class="reveal">We scored retrieval against <i>your</i> cluster IDs</h2>
+        <p class="dek reveal">No new labels were invented. Every score below asks one question: when we search
+          with a product's own text, do the products that come back carry the same <code style="font-family:var(--f-mono);color:var(--sage)">PS_PRODUCT_ID</code>?</p>
+
+        <div class="body">
+          <div class="steps reveal rd3">
+            <div class="step">
+              <div class="n">STEP 01</div>
+              <h3>Sample a product</h3>
+              <p>Draw a product whose cluster contains at least one other <em>textually different</em> product.
+                Identical rows would make the match trivial.</p>
+            </div>
+            <div class="step">
+              <div class="n">STEP 02</div>
+              <h3>Query with its own text</h3>
+              <p>Send that product's concatenated attributes — vendor, style, description, hierarchy — to the
+                index and take the top <code>k</code> results.</p>
+            </div>
+            <div class="step">
+              <div class="n">STEP 03</div>
+              <h3>Check the cluster IDs</h3>
+              <p>Count how many returned products share the query's cluster. Exact copies of the query text
+                are discarded before scoring.</p>
+            </div>
+          </div>
+
+          <div class="callout reveal rd5">
+            <div class="k">How precision is calculated</div>
+            <p><b>Precision@k = matched ÷ min(k, products actually available)</b> — we divide by what
+              <em>could</em> have been found, not by k. Half your clusters contain a single product, so dividing by a
+              fixed k would score a perfect result as a failure. Reported on the <b>multi-VSN population</b>: the
+              38.4% of clusters spanning more than one vendor style number, where exact-match SQL cannot already
+              solve the problem.</p>
+          </div>
+        </div>
+
+        <div class="foot"><span>Databricks × TJX · Evaluation readout</span><span>02 / 09</span></div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SLIDE 3 — WHAT WE EMBEDDED
+         ============================================================ -->
+    <section class="slide">
+      <div class="wrap">
+        <div class="rail reveal">
+          <span class="num">03</span>
+          <span class="lbl">Inputs</span>
+          <span class="sp"></span>
+          <span class="src">Eight columns · tiered per your guidance</span>
+        </div>
+        <h2 class="reveal">Eight columns became <i>one</i> searchable text</h2>
+        <p class="dek reveal">Vector Search embeds a single string, so the columns you identified are flattened
+          into one field per product, each value prefixed with its column name so the model reads
+          <code style="font-family:var(--f-mono);color:var(--sage)">vendor_style: 710849298007</code>
+          differently from a bare digit string.</p>
+
+        <div class="body">
+          <div class="split wide-l">
+            <div class="reveal rd3">
+              <table class="cols">
+                <thead>
+                  <tr><th>Column</th><th>Why it is in</th><th class="r">Distinct</th></tr>
+                </thead>
+                <tbody>
+                  <tr class="tier"><td colspan="3"><span class="tierlab">Primary — your key signal</span></td></tr>
+                  <tr><td class="col">VENDOR_NAME</td><td>Disambiguates style numbers reused across vendors</td><td class="r">~15K</td></tr>
+                  <tr><td class="col">VENDOR_STYLE</td><td>The VSN itself — the strongest identity signal</td><td class="r">~190K</td></tr>
+
+                  <tr class="tier"><td colspan="3"><span class="tierlab sup">Supporting — free text</span></td></tr>
+                  <tr><td class="col">PRODUCT_DESCRIPTION</td><td>Carries the match when style numbers differ</td><td class="r">~112K</td></tr>
+
+                  <tr class="tier"><td colspan="3"><span class="tierlab sec">Secondary — merchandising context</span></td></tr>
+                  <tr><td class="col">DEPARTMENT_DESCRIPTION</td><td>Coarse guardrail against cross-department matches</td><td class="r">335</td></tr>
+                  <tr><td class="col">CLASS_NAME</td><td>Narrower product grouping</td><td class="r">~7K</td></tr>
+                  <tr><td class="col">CATEGORY_NAME</td><td>Finest hierarchy level</td><td class="r">~26K</td></tr>
+                  <tr><td class="col">BUYER_NAME</td><td>Proxy for product area — buyers own categories</td><td class="r">1,751</td></tr>
+                  <tr><td class="col">EXPORT_COUNTRY</td><td>Weakest; gated to imports only, see note</td><td class="r">85</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="reveal rd4">
+              <div class="colcap">Not embedded — used as filters</div>
+              <p class="undernote" style="margin-top:18px">Six low-cardinality columns are carried into the index
+                for <b>filtering</b> rather than embedding: source region, import/domestic, banner, department
+                and class number, plus export country in its raw form. As a filter the match is exact and cheap;
+                as embedded text it would be fuzzy and could rank a wrong-region product above a right-region
+                one.</p>
+
+              <div class="specimen">
+                <div class="cap">One product's embedded text</div>
+                <code><b>vendor_name:</b> <i>RALPH LAUREN EUR/BLUE LABEL</i> | <b>vendor_style:</b> <i>710849298007</i> | <b>product_description:</b> <i>601 POPLIN SPORT SHIRT</i> | <b>department_description:</b> <i>BEST BRANDS</i> | …</code>
+              </div>
+
+              <p class="undernote">Null fields drop out entirely rather than leaving an empty
+                <code style="font-family:var(--f-mono);color:var(--sage)">export_country:</code> fragment for the
+                model to learn from.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="foot"><span>Databricks × TJX · Evaluation readout</span><span>03 / 09</span></div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SLIDE 5 — HEADLINE RESULTS
+         ============================================================ -->
+    <section class="slide deep">
+      <div class="wrap">
+        <div class="rail reveal">
+          <span class="num">04</span>
+          <span class="lbl">Result</span>
+          <span class="sp"></span>
+          <span class="src">Multi-VSN clusters · HYBRID · n = 150</span>
+        </div>
+        <h2 class="reveal">Deduplicating the corpus moved precision <i>15 points</i></h2>
+        <p class="dek reveal">Same index configuration, same embedding model, same queries. The only change is
+          collapsing rows that carry byte-identical text into one product.</p>
+
+        <div class="body">
+          <table class="res reveal rd3">
+            <thead>
+              <tr>
+                <th class="l">Configuration</th>
+                <th>Precision@3</th>
+                <th>Recall@3</th>
+                <th>Precision@5</th>
+                <th>Recall@5</th>
+                <th>Query found itself</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="l">Deduplicated corpus<small>408,027 distinct products</small></td>
+                <td class="hero">0.884</td>
+                <td class="good">0.953</td>
+                <td class="hero">0.861</td>
+                <td class="good">0.967</td>
+                <td class="good">150 / 150</td>
+              </tr>
+              <tr class="spacer"><td colspan="6"></td></tr>
+              <tr>
+                <td class="l">Full corpus<small>1,996,496 rows</small></td>
+                <td>0.730</td>
+                <td>0.700</td>
+                <td>0.634</td>
+                <td>0.593</td>
+                <td>119 / 150</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="callout reveal rd5" style="border-left-color:var(--sage)">
+            <div class="k" style="color:var(--sage)">Reading this table</div>
+            <p><b>Precision</b> is the share of returned products in the right cluster — the practitioner-facing
+              number. <b>Recall</b> is whether any correct product came back at all. On the deduplicated corpus
+              every sampled product also retrieved itself, which confirms the index is complete; on the full
+              corpus 31 of 150 could not, because duplicate text crowds them out of their own result list.</p>
+          </div>
+        </div>
+
+        <div class="foot"><span>Databricks × TJX · Evaluation readout</span><span>04 / 09</span></div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SLIDE 5 — WHY DEDUPE WINS
+         ============================================================ -->
+    <section class="slide">
+      <div class="wrap">
+        <div class="rail reveal">
+          <span class="num">05</span>
+          <span class="lbl">Diagnosis</span>
+          <span class="sp"></span>
+          <span class="src">79.6% of rows share their text with another row</span>
+        </div>
+        <h2 class="reveal">The full corpus spends its answers on <i>duplicates</i></h2>
+        <p class="dek reveal">The same product recurs across POs and months with identical descriptive fields.
+          One text repeats 9,386 times. Those copies occupy the result list before a genuinely different
+          sibling can appear.</p>
+
+        <div class="body">
+          <div class="split reveal rd3">
+            <div class="mock">
+              <div class="cap"><span>Full corpus — top 5</span><b>1 useful result</b></div>
+              <div class="mrow dup"><span class="i">01</span><span class="tx">21IN ORNG HYDRANGEA ARNG</span><span class="tagd">copy</span></div>
+              <div class="mrow dup"><span class="i">02</span><span class="tx">21IN ORNG HYDRANGEA ARNG</span><span class="tagd">copy</span></div>
+              <div class="mrow dup"><span class="i">03</span><span class="tx">21IN ORNG HYDRANGEA ARNG</span><span class="tagd">copy</span></div>
+              <div class="mrow dup"><span class="i">04</span><span class="tx">21IN ORNG HYDRANGEA ARNG</span><span class="tagd">copy</span></div>
+              <div class="mrow uniq"><span class="i">05</span><span class="tx">21IN ORNG HYDRANGEA ARNG · alt style</span><span class="tagu">new</span></div>
+            </div>
+            <div class="mock" style="border-color:rgba(127,176,155,.32)">
+              <div class="cap"><span>Deduplicated — top 5</span><b style="color:var(--sage)">5 distinct products</b></div>
+              <div class="mrow uniq"><span class="i">01</span><span class="tx">21IN ORNG HYDRANGEA ARNG</span><span class="tagu">new</span></div>
+              <div class="mrow uniq"><span class="i">02</span><span class="tx">21IN ORNG HYDRANGEA · alt style</span><span class="tagu">new</span></div>
+              <div class="mrow uniq"><span class="i">03</span><span class="tx">21IN HYDRANGEA ARNG · variant</span><span class="tagu">new</span></div>
+              <div class="mrow uniq"><span class="i">04</span><span class="tx">20IN HYDRANGEA BUSH</span><span class="tagu">new</span></div>
+              <div class="mrow uniq"><span class="i">05</span><span class="tx">21IN FLORAL ARRANGEMENT</span><span class="tagu">new</span></div>
+            </div>
+          </div>
+
+          <div class="callout reveal rd5">
+            <div class="k">What this means operationally</div>
+            <p>Collapsing to one row per distinct product reduced the corpus <b>4.89×</b> — 1,996,496 rows to
+              408,027 — and made every slot in the result list carry new information. This was not a modelling
+              change. <em>The retrieval was always working; the result list was being wasted.</em></p>
+          </div>
+        </div>
+
+        <div class="foot"><span>Databricks × TJX · Evaluation readout</span><span>05 / 09</span></div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SLIDE 6 — THE GROUND-TRUTH CEILING
+         ============================================================ -->
+    <section class="slide deep">
+      <div class="wrap">
+        <div class="rail reveal">
+          <span class="num">06</span>
+          <span class="lbl">Constraint</span>
+          <span class="sp"></span>
+          <span class="src">109,006 clusters · median 2 distinct products</span>
+        </div>
+        <h2 class="reveal">Half your clusters contain <i>one</i> product</h2>
+        <p class="dek reveal">This is the most important finding in the deck, and it is a property of the labels
+          rather than the retrieval. It caps what any score can mean.</p>
+
+        <div class="body">
+          <div class="split wide-l">
+            <div class="reveal rd3">
+              <div class="colcap">Distinct products per cluster</div>
+              <div class="dist">
+                <div class="drow hot">
+                  <span class="lab">Exactly 1 product</span>
+                  <span class="bar"><i style="--w:100%"></i></span>
+                  <span class="val">49.9%</span>
+                </div>
+                <div class="drow">
+                  <span class="lab">2 – 5 products</span>
+                  <span class="bar"><i style="--w:74.7%"></i></span>
+                  <span class="val">37.3%</span>
+                </div>
+                <div class="drow">
+                  <span class="lab">6 – 10 products</span>
+                  <span class="bar"><i style="--w:14.6%"></i></span>
+                  <span class="val">7.3%</span>
+                </div>
+                <div class="drow">
+                  <span class="lab">More than 10</span>
+                  <span class="bar"><i style="--w:11%"></i></span>
+                  <span class="val">5.5%</span>
+                </div>
+              </div>
+              <p class="undernote">Median cluster holds <b>2</b> distinct products. A singleton cluster has no
+                second product to retrieve, so it cannot be scored at all.</p>
+            </div>
+
+            <div class="reveal rd4">
+              <div class="colcap">Could a majority ever be correct?</div>
+              <table class="res" style="margin-top:0">
+                <thead>
+                  <tr><th class="l">Results requested</th><th>Clusters with enough products</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td class="l">k = 3</td><td class="good">30.4%</td></tr>
+                  <tr><td class="l">k = 10</td><td>12.8%</td></tr>
+                  <tr><td class="l">k = 20</td><td>5.5%</td></tr>
+                </tbody>
+              </table>
+              <p class="undernote">For a majority of <em>k</em> results to share the query's cluster, the cluster
+                must contain enough products to fill the list. At k=10 only 12.8% do — which is why we report
+                at <b>k=3</b>.</p>
+            </div>
+          </div>
+
+          <div class="callout reveal rd6" style="border-left-color:var(--coral);margin-top:34px">
+            <div class="k">The honest reading</div>
+            <p>A system that returns every product a cluster contains and then fills the remaining slots with
+              near-misses is <b>behaving correctly</b>, but a naive precision@10 would score it 0.2. That is why
+              our denominator is what was findable, and why <b>k=3 is the setting we recommend</b> for a
+              practitioner-facing tool.</p>
+          </div>
+        </div>
+
+        <div class="foot"><span>Databricks × TJX · Evaluation readout</span><span>06 / 09</span></div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SLIDE 7 — WHAT THE CLUSTERS CONTAIN
+         ============================================================ -->
+    <section class="slide">
+      <div class="wrap">
+        <div class="rail reveal">
+          <span class="num">07</span>
+          <span class="lbl">Ground truth quality</span>
+          <span class="sp"></span>
+          <span class="src">Inspected against the deduplicated corpus</span>
+        </div>
+        <h2 class="reveal">The labels are mostly <i>genuine</i> — with one caveat</h2>
+        <p class="dek reveal">We inspected clusters directly rather than trusting them blindly. In 81.6% of
+          multi-product clusters the descriptions differ, so recall is not satisfied by identical text.</p>
+
+        <div class="body">
+          <div class="cards reveal rd3">
+            <div class="card">
+              <div class="ct">Confirmed · same product</div>
+              <h4>One football, three vendor styles</h4>
+              <ul>
+                <li>LI10815</li>
+                <li>BC10812</li>
+                <li>AR10811</li>
+              </ul>
+              <p>All "SIZE 5 BLITZ FOOTBALL". Three unrelated style numbers, one product — exactly the case
+                exact matching cannot solve.</p>
+            </div>
+            <div class="card">
+              <div class="ct">Confirmed · style variants</div>
+              <h4>One pant, three suffixes</h4>
+              <ul>
+                <li>DO6031-063</li>
+                <li>DO6031-377</li>
+                <li>DO6031-063-1005-01</li>
+              </ul>
+              <p>All "ORE M DF SPOTLIGHT PANT". Colour and size suffixes on a shared root style.</p>
+            </div>
+            <div class="card warn">
+              <div class="ct">Needs your confirmation</div>
+              <h4>Three different book titles, one cluster</h4>
+              <ul>
+                <li>MAFI UNRAVEL ME</li>
+                <li>MAFI SHATTER ME</li>
+                <li>MAFI IGNITE ME</li>
+              </ul>
+              <p>Grouped as a single product. If this is intentional — a series, not an item — it changes what
+                "same product" means for the whole evaluation.</p>
+            </div>
+          </div>
+
+          <div class="callout reveal rd5">
+            <div class="k">Vendor style numbers are high-precision</div>
+            <p>Of 219,194 distinct vendor style numbers, only <b>2</b> span more than one cluster. So the pair
+              (vendor, style) can be trusted as a cheap pre-pass — it resolves 61.6% of multi-row clusters
+              outright, leaving the 38.4% we measured semantic retrieval against.</p>
+          </div>
+        </div>
+
+        <div class="foot"><span>Databricks × TJX · Evaluation readout</span><span>07 / 09</span></div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SLIDE 8 — DATA QUALITY FINDINGS
+         ============================================================ -->
+    <section class="slide deep">
+      <div class="wrap">
+        <div class="rail reveal">
+          <span class="num">08</span>
+          <span class="lbl">Extract quality</span>
+          <span class="sp"></span>
+          <span class="src">Present in the extract as supplied · all handled</span>
+        </div>
+        <h2 class="reveal">Four defects handled — and worth <i>fixing at source</i></h2>
+        <p class="dek reveal">None of these blocked the evaluation. All four are worth correcting before this
+          becomes a production pipeline.</p>
+
+        <div class="body">
+          <div class="fgrid reveal rd3">
+            <div class="fitem">
+              <div class="fig">3,176<small>rows · 0.159%</small></div>
+              <div>
+                <h4>Field shift from inch marks</h4>
+                <p>An inch mark in a product name (<code style="font-family:var(--f-mono);color:var(--sage)">12" CERAMIC WOK</code>)
+                  was double-escaped at export, pushing every later value one column right. Quarantined — their
+                  row IDs are unusable.</p>
+              </div>
+            </div>
+            <div class="fitem">
+              <div class="fig">571<small>rows</small></div>
+              <div>
+                <h4>Country field holds port names</h4>
+                <p>Export country mixes ISO3 codes with ports of lading: <em>US PORT</em> (456), <em>NINGBO</em>,
+                  <em>GUANGZHOU</em>, <em>FELIXSTOWE, UK</em>. Two concepts in one column.</p>
+              </div>
+            </div>
+            <div class="fitem">
+              <div class="fig">64.4%<small>missing, but structural</small></div>
+              <div>
+                <h4>Nullity that leaks a flag</h4>
+                <p>Export country is absent on 59.8% of domestic rows and 0% of imports. Left raw it teaches the
+                  model import-versus-domestic instead of product identity, so we gate it.</p>
+              </div>
+            </div>
+            <div class="fitem">
+              <div class="fig">171k<small>rows with DNU markers</small></div>
+              <div>
+                <h4>Retired hierarchy values</h4>
+                <p>"DNU" placeholders remain in category (117,644) and class (53,349) names. Treated as low-trust
+                  context rather than real categories.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="foot"><span>Databricks × TJX · Evaluation readout</span><span>08 / 09</span></div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         SLIDE 9 — OPEN QUESTIONS + NEXT STEPS
+         ============================================================ -->
+    <section class="slide">
+      <div class="wrap">
+        <div class="rail reveal">
+          <span class="num">09</span>
+          <span class="lbl">What we need from you</span>
+          <span class="sp"></span>
+          <span class="src">Blocking questions marked ★</span>
+        </div>
+        <h2 class="reveal">Eight questions, and where we'd go <i>next</i></h2>
+
+        <div class="body">
+          <div class="qgrid reveal rd2">
+            <div class="q"><span class="qn">★ 01</span><p><b>What does a cluster represent</b> — an identical item, or a style family? The three-book-titles case suggests some grouping is looser than "same product".</p></div>
+            <div class="q"><span class="qn">★ 02</span><p><b>Is export country origin or port of lading?</b> If both, we need them split into separate columns.</p></div>
+            <div class="q"><span class="qn">03</span><p>Can we get a <b>re-export with correct quoting</b> for the 3,176 shifted rows, or should we drop them permanently?</p></div>
+            <div class="q"><span class="qn">04</span><p><b>266 clean rows carry no cluster ID.</b> Are these intentionally unclustered, or an extract gap?</p></div>
+            <div class="q"><span class="qn">05</span><p>Confidence score is 1.0 on 99.85% of rows. <b>What process emits it</b>, and is it meaningful here?</p></div>
+            <div class="q"><span class="qn">06</span><p>Source region holds a few non-region values (<code>021</code>, <code>369</code>). Export artefacts, or real codes?</p></div>
+            <div class="q"><span class="qn">07</span><p>The join file has <b>19 duplicate row IDs</b> and 3,467 blanks. We kept the first value — please confirm that is safe.</p></div>
+            <div class="q"><span class="qn">08</span><p>Which <b>input shape</b> matters most to your practitioners: a full PO line, a short vendor style, or a typed description?</p></div>
+          </div>
+
+          <div class="nextgrid reveal rd4">
+            <div class="nx">
+              <div class="nn">Next · 01</div>
+              <h4>Vary the query shape</h4>
+              <p>Compare natural language, full PO attributes, and style-plus-filters against the same index.</p>
+            </div>
+            <div class="nx">
+              <div class="nn">Next · 02</div>
+              <h4>Exact-match pre-pass</h4>
+              <p>Resolve the 61.6% single-style clusters with SQL and reserve retrieval for the hard 38.4%.</p>
+            </div>
+            <div class="nx">
+              <div class="nn">Next · 03</div>
+              <h4>Practitioner review</h4>
+              <p>Put the search tool in front of a merchant and record where the results disagree with judgement.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="foot"><span>Akil Thomas · Databricks Field Engineering</span><span>09 / 09</span></div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Deck chrome: progress pips live outside the 1920×1080 stage -->
+<nav class="deck-controls" aria-label="Slide navigation">
+  <span id="pgLabel">01 / 08</span>
+  <span class="pips" id="pips"></span>
+</nav>
+
+<!-- Inline editing affordance -->
+<div class="edit-hotzone" aria-hidden="true"></div>
+<button class="edit-toggle" id="editToggle" title="Edit mode (E)" aria-label="Toggle edit mode">✎</button>
+<div class="edit-note">Edit mode · click any text · Ctrl+S saves a copy · E exits</div>
+
+<script>
+/* ============================================================
+   CLUSTER FIELD — title slide only.
+   Abstract, CSS/JS generated: points grouped inside hairline rings.
+   coral = the queried product, sage = same-cluster siblings,
+   grey = unrelated products. No image assets.
+   ============================================================ */
+(function buildField(){
+  var f=document.getElementById('field');
+  if(!f) return;
+  var groups=[
+    {cx:190,cy:150,r:118,n:7,sib:3},
+    {cx:452,cy:372,r:150,n:10,sib:4},
+    {cx:186,cy:520,r:104,n:6,sib:2}
+  ];
+  var base=0.55;
+  groups.forEach(function(g,gi){
+    var ring=document.createElement('div');
+    ring.className='ring';
+    ring.style.left=(g.cx-g.r)+'px';
+    ring.style.top=(g.cy-g.r)+'px';
+    ring.style.width=ring.style.height=(g.r*2)+'px';
+    ring.style.animationDelay=(base+gi*0.16)+'s';
+    f.appendChild(ring);
+    for(var i=0;i<g.n;i++){
+      var a=(i/g.n)*Math.PI*2+gi*0.7;
+      var rad=g.r*(0.28+0.62*((i*37%100)/100));
+      var d=document.createElement('div');
+      d.className='dot'+(i===0?' hit':(i<=g.sib?' sib':''));
+      d.style.left=(g.cx+Math.cos(a)*rad-5)+'px';
+      d.style.top=(g.cy+Math.sin(a)*rad-5)+'px';
+      d.style.animationDelay=(base+gi*0.16+i*0.035)+'s';
+      f.appendChild(d);
+    }
+  });
+})();
+
+/* ============================================================
+   SLIDE CONTROLLER
+   Fixed-stage scaling + keyboard / touch / wheel navigation.
+   ============================================================ */
+class SlidePresentation{
+  constructor(){
+    this.slides=Array.from(document.querySelectorAll('.slide'));
+    this.stage=document.getElementById('deckStage');
+    this.pgLabel=document.getElementById('pgLabel');
+    this.current=0;
+    this.buildPips();
+    this.setupStageScale();
+    this.setupKeyboardNav();
+    this.setupTouchNav();
+    this.setupWheelNav();
+    this.showSlide(0);
+  }
+
+  /* Scale the whole 1920×1080 stage; never reflow slide content. */
+  setupStageScale(){
+    const scale=()=>{
+      const f=Math.min(window.innerWidth/1920,window.innerHeight/1080);
+      const x=(window.innerWidth-1920*f)/2;
+      const y=(window.innerHeight-1080*f)/2;
+      this.stage.style.transform=`translate(${x}px, ${y}px) scale(${f})`;
+    };
+    scale();
+    window.addEventListener('resize',scale);
+  }
+
+  buildPips(){
+    const host=document.getElementById('pips');
+    this.slides.forEach((_,i)=>{
+      const p=document.createElement('span');
+      p.className='pip';
+      p.addEventListener('click',()=>this.showSlide(i));
+      host.appendChild(p);
+    });
+    this.pips=Array.from(host.children);
+  }
+
+  setupKeyboardNav(){
+    document.addEventListener('keydown',e=>{
+      if(document.body.classList.contains('editing') && e.target.isContentEditable) return;
+      switch(e.key){
+        case 'ArrowRight': case 'ArrowDown': case ' ': case 'PageDown':
+          e.preventDefault(); this.next(); break;
+        case 'ArrowLeft': case 'ArrowUp': case 'PageUp':
+          e.preventDefault(); this.prev(); break;
+        case 'Home': e.preventDefault(); this.showSlide(0); break;
+        case 'End': e.preventDefault(); this.showSlide(this.slides.length-1); break;
+      }
+    });
+  }
+
+  setupTouchNav(){
+    let x0=null,y0=null;
+    document.addEventListener('touchstart',e=>{
+      x0=e.changedTouches[0].clientX; y0=e.changedTouches[0].clientY;
+    },{passive:true});
+    document.addEventListener('touchend',e=>{
+      if(x0===null) return;
+      const dx=e.changedTouches[0].clientX-x0;
+      const dy=e.changedTouches[0].clientY-y0;
+      if(Math.abs(dx)>50 && Math.abs(dx)>Math.abs(dy)) dx<0?this.next():this.prev();
+      x0=y0=null;
+    },{passive:true});
+  }
+
+  setupWheelNav(){
+    let lock=false;
+    document.addEventListener('wheel',e=>{
+      if(lock) return;
+      if(Math.abs(e.deltaY)<25) return;
+      lock=true;
+      e.deltaY>0?this.next():this.prev();
+      setTimeout(()=>lock=false,650);
+    },{passive:true});
+  }
+
+  next(){ this.showSlide(this.current+1); }
+  prev(){ this.showSlide(this.current-1); }
+
+  showSlide(i){
+    this.current=Math.max(0,Math.min(i,this.slides.length-1));
+    this.slides.forEach((s,n)=>{
+      const on=n===this.current;
+      s.classList.toggle('active',on);
+      s.classList.toggle('visible',on);
+    });
+    this.pips.forEach((p,n)=>p.classList.toggle('on',n===this.current));
+    const num=String(this.current+1).padStart(2,'0');
+    this.pgLabel.textContent=`${num} / ${String(this.slides.length).padStart(2,'0')}`;
+  }
+}
+const deck=new SlidePresentation();
+
+/* ============================================================
+   INLINE EDITOR
+   Hover the top-left corner or press E. Ctrl+S downloads a copy
+   with edits baked in. Autosaves to localStorage.
+   ============================================================ */
+class InlineEditor{
+  constructor(){
+    this.isActive=false;
+    this.KEY='tjx-eval-deck-edits';
+    this.targets='h1,h2,h3,h4,p,td,th,li,.lab,.val,.big,.note,.vs,.k,.n,.ct,.cap,.fig,.qn,.nn,.st,.tx';
+    this.restore();
+    this.wire();
+  }
+  wire(){
+    const toggle=document.getElementById('editToggle');
+    const zone=document.querySelector('.edit-hotzone');
+    let hideT=null;
+    /* JS hover with a grace period — a CSS sibling selector breaks
+       because pointer-events:none severs the hover chain. */
+    zone.addEventListener('mouseenter',()=>{clearTimeout(hideT);toggle.classList.add('show');});
+    zone.addEventListener('mouseleave',()=>{
+      hideT=setTimeout(()=>{if(!this.isActive)toggle.classList.remove('show');},400);
+    });
+    toggle.addEventListener('mouseenter',()=>clearTimeout(hideT));
+    toggle.addEventListener('mouseleave',()=>{
+      hideT=setTimeout(()=>{if(!this.isActive)toggle.classList.remove('show');},400);
+    });
+    toggle.addEventListener('click',()=>this.toggleEditMode());
+    zone.addEventListener('click',()=>this.toggleEditMode());
+    document.addEventListener('keydown',e=>{
+      if((e.key==='e'||e.key==='E') && !e.target.isContentEditable) this.toggleEditMode();
+      if((e.ctrlKey||e.metaKey) && e.key==='s' && this.isActive){e.preventDefault();this.download();}
+    });
+  }
+  toggleEditMode(){
+    this.isActive=!this.isActive;
+    document.body.classList.toggle('editing',this.isActive);
+    const t=document.getElementById('editToggle');
+    t.classList.toggle('active',this.isActive);
+    t.classList.add('show');
+    document.querySelectorAll(this.targets).forEach((el,i)=>{
+      if(this.isActive){
+        el.setAttribute('contenteditable','true');
+        el.dataset.eid='e'+i;
+        el.addEventListener('blur',()=>this.save());
+      }else{
+        el.removeAttribute('contenteditable');
+      }
+    });
+    if(!this.isActive) this.save();
+  }
+  save(){
+    const map={};
+    document.querySelectorAll('[data-eid]').forEach(el=>map[el.dataset.eid]=el.innerHTML);
+    try{ localStorage.setItem(this.KEY,JSON.stringify(map)); }catch(e){}
+  }
+  restore(){
+    let map;
+    try{ map=JSON.parse(localStorage.getItem(this.KEY)||'null'); }catch(e){ return; }
+    if(!map) return;
+    document.querySelectorAll(this.targets).forEach((el,i)=>{
+      const k='e'+i;
+      if(map[k]!==undefined) el.innerHTML=map[k];
+    });
+  }
+  download(){
+    const clone=document.documentElement.cloneNode(true);
+    clone.querySelectorAll('[contenteditable]').forEach(el=>el.removeAttribute('contenteditable'));
+    clone.querySelectorAll('[data-eid]').forEach(el=>el.removeAttribute('data-eid'));
+    const blob=new Blob(['<!DOCTYPE html>\n'+clone.outerHTML],{type:'text/html'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='evaluation-findings.html';
+    a.click();
+  }
+}
+const editor=new InlineEditor();
+</script>
+</body>
+</html>

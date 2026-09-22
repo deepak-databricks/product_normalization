@@ -1,0 +1,72 @@
+# Builds the Unity Catalog table and Vector Search index used for product matching.
+#
+# Three tasks rather than one: at ~2M rows a failure in the index step should not
+# force a re-read of the CSV, and a failure in the transform should not force a
+# re-embed. Each task is independently re-runnable.
+resources:
+  jobs:
+    create_ai_search_index:
+      name: create_ai_search_index
+
+      tasks:
+        # CSV in the UC volume -> bronze table, verbatim. Asserts the row count so
+        # a CSV-parsing regression fails here rather than silently downstream.
+        - task_key: ingest_raw
+          python_wheel_task:
+            package_name: product_normalization
+            entry_point: main
+            parameters:
+              - ingest
+              - --catalog
+              - ${var.catalog}
+              - --schema
+              - ${var.schema}
+              - --source-path
+              - /Volumes/${var.catalog}/${var.schema}/${var.volume}/${var.volume_subdir}/po_data_all.csv
+          environment_key: default
+
+        # Normalize sentinels, gate EXPORT_COUNTRY, derive embed_text, quarantine
+        # the field-shifted rows, and enable Change Data Feed for Delta Sync.
+        - task_key: build_search_table
+          depends_on:
+            - task_key: ingest_raw
+          python_wheel_task:
+            package_name: product_normalization
+            entry_point: main
+            parameters:
+              - build-table
+              - --catalog
+              - ${var.catalog}
+              - --schema
+              - ${var.schema}
+              - --on-malformed
+              - quarantine
+          environment_key: default
+
+        # Create the index if absent, otherwise sync it. Returns without waiting;
+        # the first embed of ~2M rows outlasts any sensible job timeout.
+        - task_key: create_index
+          depends_on:
+            - task_key: build_search_table
+          python_wheel_task:
+            package_name: product_normalization
+            entry_point: main
+            parameters:
+              - create-index
+              - --catalog
+              - ${var.catalog}
+              - --schema
+              - ${var.schema}
+              - --endpoint
+              - ${var.vector_search_endpoint}
+              - --embedding-endpoint
+              - ${var.embedding_endpoint}
+          environment_key: default
+
+      # Serverless: this is a short batch job with no cluster worth tuning.
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+            dependencies:
+              - ../dist/*.whl

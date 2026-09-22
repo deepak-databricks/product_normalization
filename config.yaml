@@ -1,0 +1,220 @@
+# Configuration for TJX product normalization / identity resolution.
+#
+# Source data: 25 "PO Data Part N" emails from Vignesh Vasudevan (TJX), 2026-08-04,
+# unioned into assets/data/po_data_all.csv — 1,999,911 rows x 30 columns.
+# Column names had their positional `cN_` prefixes stripped.
+
+ai_search:
+  # Columns fed to the embedding model for semantic matching of similar products.
+  # Ordering and tiering per TJX guidance (Vignesh Vasudevan): VENDOR_NAME +
+  # VENDOR_STYLE (VSN) are the PRIMARY key signal, PRODUCT_DESCRIPTION is
+  # SUPPORTING text, and the merchandise hierarchy is SECONDARY context.
+  #
+  # VSN validated as an identity signal: (VENDOR_NAME, VENDOR_STYLE) yields
+  # 219,324 groups over 1,996,735 clean rows — ~9.1 rows per group, consistent
+  # with the same product recurring across POs/months. Note VENDOR_STYLE alone
+  # gives only 189,531 groups, so ~30K styles are reused across vendors —
+  # always pair it with VENDOR_NAME rather than keying on style alone.
+  - embedding_cols:
+      # -- primary: vendor style number (VSN), the customer's key signal --
+      - VENDOR_NAME              # 0.01% null/None, ~15K distinct
+      - VENDOR_STYLE             # 0.25% empty, ~190K distinct — the VSN
+      # -- supporting free text --
+      - PRODUCT_DESCRIPTION      # 0.00% null, ~112K distinct — no sentinels present
+      # -- secondary merchandising / sourcing context --
+      - DEPARTMENT_DESCRIPTION   # 0.00% null, 335 distinct — coarse guardrail
+      - CLASS_NAME               # 0.00% null, ~7K distinct
+      - CATEGORY_NAME            # 0.00% null, ~26K distinct
+      - BUYER_NAME               # 0.00% null, 1,751 distinct — buyer as a proxy for product area
+      - EXPORT_COUNTRY           # 64.41% null/None — see caveat below; weak, keep last
+
+  # Tiering carried separately so a weighted/multi-field scorer can honour the
+  # customer's intent instead of treating all embedding_cols equally.
+  - field_tiers:
+      primary:   [VENDOR_NAME, VENDOR_STYLE]
+      supporting: [PRODUCT_DESCRIPTION]
+      secondary: [DEPARTMENT_DESCRIPTION, CLASS_NAME, CATEGORY_NAME, BUYER_NAME, EXPORT_COUNTRY]
+
+  # Single customer-provided column labelling clusters of similar products,
+  # produced by TJX's ML process. This is the ground truth for evaluation.
+  #
+  # WHAT A CLUSTER ACTUALLY MEANS (inspected 2026-08-06, dedupe table). Mostly
+  # genuine same-product grouping across vendor-side style variants:
+  #   369367192139   ORE M DF SPOTLIGHT PANT  <- DO6031-063 / -377 / -063-1005-01
+  #   1391569435558  SIZE 5 BLITZ FOOTBALL    <- LI10815 / BC10812 / AR10811
+  # The second is the case exact matching cannot solve and semantic search must:
+  # three unrelated style numbers, one product.
+  #
+  # 81.6% of multi-row clusters (44,540 of 54,570) contain more than one distinct
+  # PRODUCT_DESCRIPTION, so recall is not satisfied by identical text.
+  #
+  # Not perfectly clean, though: cluster 1322849959020 groups three different book
+  # titles (MAFI UNRAVEL ME / SHATTER ME / IGNITE ME) as one product. Some label
+  # looseness exists and caps how high any recall number can honestly read. Raise
+  # with Vignesh -- see open_questions.
+  #
+  # RESOLVED 2026-08-05: supplied separately as assets/data/joinkeys_clusterIDs.csv
+  # (headers c28_REC_ID, c1_PS_PRODUCT_ID) and joined onto po_data_all.csv on
+  # REC_ID. PS_PRODUCT_ID is the `c1` column that was missing from the original
+  # c2..c31 extract — it is the product-identity cluster ID.
+  #
+  # Coverage: 1,996,469 of 1,999,911 rows labelled (99.828%); 109,006 distinct
+  # clusters, mean ~18.3 rows/cluster, largest 18,143 rows, 29.3% singletons.
+  # Unlabelled rows carry an empty string — filter them out for supervised eval.
+  - label_col: PS_PRODUCT_ID
+
+  # Row identifier — unique per row, use to join predictions back to source.
+  - id_col: REC_ID
+
+  # Blocking keys to cut the O(n^2) candidate space before embedding comparison.
+  # DEPARTMENT_NUM (98 values) x CLASS_NUM (127 values) keeps blocks tractable
+  # without splitting genuine matches, since a product rarely changes department.
+  - blocking_cols:
+      - DEPARTMENT_NUM
+      - CLASS_NUM
+
+  # Carried into the table and synced to the index for metadata FILTERING, not
+  # embedded. These are low-cardinality categoricals: as a filter
+  # (SOURCE_REGION = 'EU') the match is exact and cheap, whereas as a BM25 term it
+  # is fuzzy and could rank a wrong-region product above a right-region one.
+  #
+  # EXPORT_COUNTRY and SOURCE_REGION are DIFFERENT concepts, not duplicates:
+  #   EXPORT_COUNTRY - country of origin, 85 ISO3 codes (ITA, CHN, USA).
+  #                    Also in embedding_cols, gated to IMPORT rows there.
+  #   SOURCE_REGION  - selling region / channel, 5 real values on clean rows:
+  #                    US_BM 889,126 | ECOM 588,126 | EU 346,545 | CA 137,031 | SRA 35,662
+  #                    (~220 junk values come from field-shifted rows, which are
+  #                     quarantined before this table is built)
+  #
+  # RESOLVED 2026-08-06: filtering works, but the REST field name is
+  # `filter_string` (a SQL predicate), NOT `filters` or `filters_json`.
+  # cfc_ai_search is a STORAGE_OPTIMIZED endpoint, and those take a SQL string
+  # where STANDARD endpoints take the dict form:
+  #   filter_string="SOURCE_REGION = 'EU'"   -> works, EU only
+  #   filter_string="SOURCE_REGION = 'ZZZZ'" -> empty result, as it should
+  #   filter_string="NOT_A_COLUMN = 'x'"     -> errors, "not found in table schema"
+  #   filters_json={"SOURCE_REGION": "EU"}   -> rejected, "Filter JSON is not
+  #                                             supported for storage optimized"
+  #
+  # The trap: the query REST endpoint SILENTLY IGNORES unknown body keys (a
+  # deliberately bogus key is accepted too), so passing `filters` -- the name the
+  # docs and the Python client use -- searches the whole corpus while looking
+  # like it succeeded. Always assert a filtered query actually narrows results;
+  # do not infer success from the absence of an error.
+  #
+  # Note the databricks-sdk WorkspaceClient.query_index() only exposes
+  # filters_json, so it CANNOT filter on this endpoint -- call the REST API
+  # directly with filter_string, which is what databricks-ai-search does
+  # internally (see ai_search/index.py, it sets filter_string for str filters).
+  # Storage-optimized also does not support ARRAY_CONTAINS or BETWEEN.
+  - filter_cols:
+      - SOURCE_REGION
+      - EXPORT_COUNTRY
+      - IMPORT_DOMESTIC
+      - BANNER
+      - DEPARTMENT_NUM
+      - CLASS_NUM
+
+  # Exact-match shortcut: rows sharing a full VSN are near-certainly the same
+  # product and can be collapsed before any embedding work.
+  #
+  # MEASURED against the customer's own PS_PRODUCT_ID clusters (2026-08-05, full
+  # 1.99M-row table). Of the 77,021 clusters holding more than one row:
+  #   47,432 (61.6%)  every row shares ONE VSN  -> exact match alone solves these
+  #   29,589 (38.4%)  the cluster spans >1 VSN  -> only these need semantic matching
+  # And VSN almost never over-merges: of 219,194 distinct VSNs, just 2 span more
+  # than one cluster (worst case 2 clusters). So VSN is high-precision and can be
+  # trusted as a pre-pass.
+  #
+  # Implication for evaluation: recall@k measured over ALL sampled rows is
+  # flattered by the 61.6% that exact match already handles. Report it separately
+  # for the multi-VSN subset — that is the population semantic search has to earn.
+  #
+  # The hard cases share a signature: same vendor, VSN differing by a size or
+  # colour suffix (M15371 vs M15371-7395; 3F6FI0408901 vs ...02), with nearly
+  # identical descriptions. Character-level similarity on VENDOR_STYLE would
+  # likely catch many of them more cheaply than embeddings.
+  - exact_match_cols:
+      - VENDOR_NAME
+      - VENDOR_STYLE
+
+source:
+  unioned_csv: assets/data/po_data_all.csv
+  parts_glob: assets/data/download_no_groups_*.csv
+  expected_parts: 25
+  expected_rows: 1999911
+  # 30 from the PO extract + PS_PRODUCT_ID joined from the cluster-ID file
+  columns: 31
+  # Cluster labels, joined onto the unioned CSV on REC_ID.
+  cluster_id_csv: assets/data/joinkeys_clusterIDs.csv
+  cluster_join_key: REC_ID
+  labelled_rows: 1996469
+  distinct_clusters: 109006
+
+# Known defects in the customer extract — carry these into any pipeline.
+data_quality:
+  # ~0.159% of rows (3,176 of 1,999,911) have fields shifted right because inch
+  # marks in product names (e.g. 12" CERAMIC WOK) were double-escaped at export.
+  # Symptom: CONFIDENCE_SCORE holds a value like '076"' and CLASS_NUM/CATEGORY_NUM
+  # are empty. Present in the source files, not introduced by the union.
+  malformed_quoting_rows: 3176
+  # Spark SQL predicate that isolates the bad rows (regex escaped for SQL strings).
+  malformed_row_filter: 'CONFIDENCE_SCORE NOT RLIKE "^[0-9]+([.][0-9]+)?$"'
+  # 14 of 25 source parts contain newlines inside quoted fields; none end with a
+  # trailing newline. Always parse as CSV — never concatenate or split by line.
+  embedded_newlines: true
+
+  # Literal strings that mean "missing" but are not empty. Normalise these to
+  # NULL before embedding, or the model will treat "None" as a real token and
+  # cluster unrelated products on it.
+  null_sentinels: ["None", "NONE", "NULL", "N/A", "NA", "nan", "-", "."]
+
+  # EXPORT_COUNTRY is 64.41% missing overall (801,579 empty + 484,482 literal
+  # "None"), but the nullity is STRUCTURAL, not random:
+  #     IMPORT   rows:   0.0% missing
+  #     DOMESTIC rows:  59.8% missing
+  # Domestic purchases have no export country by definition. Including it raw
+  # leaks the import/domestic flag into the embedding, so either drop it for
+  # DOMESTIC rows or gate it on IMPORT_DOMESTIC == 'IMPORT'.
+  export_country_missing_pct: 64.41
+  export_country_structural: true
+
+  # EXPORT_COUNTRY is not a clean ISO3 column even on structurally-sound rows.
+  # Measured on the built table (1,996,496 rows): 1,285,843 NULL, 710,082 valid
+  # ISO3, and 571 malformed. The malformed ones are mostly NOT field-shift damage
+  # -- they are free-text port and place names the customer's source system
+  # allows:
+  #     US PORT 456 | US PORTS 62 | INDIA 14 | BOM PORT 7 | NINGBO 6
+  #     GUANGZHOU 5 | CHINA 4 | FELIXSTOWE, UK 3 | ...
+  # So the field mixes country-of-origin codes with ports of lading. Only ~5 rows
+  # look like genuine shift residue (values 260-290 chars long, i.e. a whole CSV
+  # row landing in one field).
+  #
+  # Consequence for the app: a filter dropdown built from SELECT DISTINCT
+  # EXPORT_COUNTRY shows 90 values, including the junk. Filter on ISO3 shape
+  # (RLIKE '^[A-Z]{3}$') if a clean list is wanted. Raise with Vignesh --
+  # see open_questions.
+  export_country_malformed_rows: 571
+  export_country_iso3_filter: "EXPORT_COUNTRY RLIKE '^[A-Z]{3}$'"
+
+  # "DNU" (do-not-use) placeholders left in the merchandise hierarchy by TJX's
+  # own maintenance process. Treat as low-trust context, not real categories.
+  dnu_marker_rows:
+    CATEGORY_NAME: 117644
+    CLASS_NAME: 53349
+
+  high_null_cols:
+    EXPORT_COUNTRY: 64.41
+    MASTER_VENDOR_NUMBER: 8.02
+
+open_questions:
+  - "CONFIDENCE_SCORE is 1.0 for 99.85% of rows. Confirm what process emits it and whether it is meaningful here."
+  - "3,176 rows are corrupted by inch-mark escaping. Ask for a re-export quoted properly, or drop/repair them. These rows could not be joined to a cluster ID because their REC_ID is garbage."
+  - "266 structurally-clean rows have no cluster ID (27 REC_IDs absent from the join file, 239 with an empty REC_ID). Confirm whether these are intentionally unclustered."
+  - "The join file has 3,467 rows with an empty REC_ID and 19 duplicate REC_IDs (first value kept). Confirm the duplicates are benign."
+  - "What does PS_PRODUCT_ID represent exactly -- identical item, or style family? Cluster 1322849959020 groups three different book titles (MAFI UNRAVEL ME / SHATTER ME / IGNITE ME), which suggests some grouping is looser than 'same product'."
+  - "SOURCE_REGION holds ~4 junk values on otherwise-clean rows (MENS ACTIVEW, 2025-11-21, 369, 021). Confirm these are export artifacts rather than real region codes."
+  - "EXPORT_COUNTRY mixes ISO3 country codes with free-text port names (US PORT x456, NINGBO, FELIXSTOWE UK). Is it country-of-origin or port-of-lading? If both, we need them split, or agreement to filter to ISO3-shaped values only."
+
+resolved:
+  - "2026-08-05: cluster labels received as joinkeys_clusterIDs.csv and joined on REC_ID -> PS_PRODUCT_ID. This also answers the missing-c1 question: c1_PS_PRODUCT_ID is the cluster ID."

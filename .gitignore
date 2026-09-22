@@ -1,0 +1,31 @@
+.databricks/
+build/
+dist/
+__pycache__/
+*.egg-info
+.venv/
+
+# Symlinks into .databricks/aitools — the targets are gitignored, so committing
+# these would only produce dangling links on a fresh clone.
+.claude/skills/
+
+# Parallel git worktrees are created here. They share this repo's .git, so
+# committing them would stage a second copy of the entire tree.
+.claude/worktrees/
+
+# Editor-local settings
+.idea/
+.vscode/
+.isaac/
+
+# Secrets: .env is local-only, the example template is committed
+.env
+!.env.example
+
+# Raw customer PO data (~514 MB, redistributable only via UC)
+assets/data/*.csv
+
+scratch/**
+!scratch/README.md
+**/explorations/**
+**/!explorations/README.md
